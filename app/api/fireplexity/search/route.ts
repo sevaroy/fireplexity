@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const messages = body.messages || []
     const query = messages[messages.length - 1]?.content || body.query
+    const searchDomains = body.searchDomains || []
     console.log(`[${requestId}] Query received:`, query)
 
     if (!query) {
@@ -63,13 +64,22 @@ export async function POST(request: Request) {
           dataStream.writeData({ type: 'status', message: 'Starting search...' })
           dataStream.writeData({ type: 'status', message: 'Searching for relevant sources...' })
             
-          const searchData = await firecrawl.search(query, {
+          const searchOptions: any = {
             limit: 6,
             scrapeOptions: {
               formats: ['markdown'],
               onlyMainContent: true
             }
-          })
+          };
+
+          if (searchDomains.length > 0) {
+            searchOptions.pageOptions = {
+              includePaths: searchDomains.map((domain: string) => `*://${domain}/**`)
+            };
+            console.log(`[${requestId}] Restricting search to domains:`, searchOptions.pageOptions.includePaths);
+          }
+
+          const searchData = await firecrawl.search(query, searchOptions);
           
           // Transform sources metadata
           sources = searchData.data?.map((item: any) => ({
@@ -121,20 +131,19 @@ export async function POST(request: Request) {
             aiMessages = [
               {
                 role: 'system',
-                content: `You are a friendly assistant that helps users find information.
+                content: `You are 'Trip-Advisor AI', a specialized travel planning assistant. Your goal is to help users discover destinations and plan their perfect trip.
                 
                 RESPONSE STYLE:
-                - For greetings (hi, hello), respond warmly and ask how you can help
-                - For simple questions, give direct, concise answers
-                - For complex topics, provide detailed explanations only when needed
-                - Match the user's energy level - be brief if they're brief
-                
+                - Be enthusiastic, inspiring, and helpful.
+                - When a user asks about a destination, provide a captivating summary including key attractions, cultural highlights, and unique experiences.
+                - For travel planning queries (e.g., "7-day itinerary for Japan"), provide a structured, day-by-day plan.
+                - Always consider the user's potential interests (e.g., adventure, relaxation, culture, food).
+                - If the query is vague, ask clarifying questions to better understand their travel style and preferences (e.g., "What's your budget?", "Who are you traveling with?").
+
                 FORMAT:
-                - Use markdown for readability when appropriate
-                - Keep responses natural and conversational
-                - Include citations inline as [1], [2], etc. when referencing specific sources
-                - Citations should correspond to the source order (first source = [1], second = [2], etc.)
-                - Use the format [1] not CITATION_1 or any other format`
+                - Use markdown for clear formatting (e.g., lists for itineraries, bold for key places).
+                - Include citations inline like [1], [2] when referencing specific information from the sources.
+                - Ensure citations match the source order provided.`
               },
               {
                 role: 'user',
@@ -146,16 +155,13 @@ export async function POST(request: Request) {
             aiMessages = [
               {
                 role: 'system',
-                content: `You are a friendly assistant continuing our conversation.
+                content: `You are 'Trip-Advisor AI', continuing a travel planning conversation.
                 
                 REMEMBER:
-                - Keep the same conversational tone from before
-                - Build on previous context naturally
-                - Match the user's communication style
-                - Use markdown when it helps clarity
-                - Include citations inline as [1], [2], etc. when referencing specific sources
-                - Citations should correspond to the source order (first source = [1], second = [2], etc.)
-                - Use the format [1] not CITATION_1 or any other format`
+                - Maintain your enthusiastic and helpful travel expert persona.
+                - Build upon the previous parts of the trip we've planned.
+                - Use markdown for clarity.
+                - Cite your sources using the [1], [2] format.`
               },
               // Include conversation context
               ...messages.slice(0, -1).map((m: { role: string; content: string }) => ({
@@ -180,9 +186,7 @@ export async function POST(request: Request) {
             messages: [
               {
                 role: 'system',
-                content: `Generate 5 natural follow-up questions based on the query and context.\n                \n                ONLY generate questions if the query warrants them:\n                - Skip for simple greetings or basic acknowledgments\n                - Create questions that feel natural, not forced\n                - Make them genuinely helpful, not just filler\n                - Focus on the topic and sources available\n                \n                If the query doesn't need follow-ups, return an empty response.
-                ${isFollowUp ? 'Consider the full conversation history and avoid repeating previous questions.' : ''}
-                Return only the questions, one per line, no numbering or bullets.`
+                content: `You are a travel expert AI. Based on our current conversation, generate 5 insightful follow-up questions to help the user build out their travel plans.\n\n                RULES:\n                - Questions should be genuinely helpful for travel planning (e.g., "Would you like to explore day trips from Tokyo?", "What kind of budget should we plan for accommodation?").\n                - Avoid generic questions. Make them specific to the destinations and activities discussed.\n                - If the conversation is just starting, suggest broad exploratory questions (e.g., "What kind of vibe are you looking for on this trip? Adventure, relaxation, or cultural immersion?").\n                - If no good follow-up questions are possible, return an empty response.\n                - Return only the questions, one per line, no numbering or bullets.`
               },
               {
                 role: 'user',
