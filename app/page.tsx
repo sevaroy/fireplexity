@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { ErrorDisplay } from '@/components/error-display'
@@ -41,16 +48,18 @@ export default function FireplexityPage() {
   const [, setIsCheckingEnv] = useState<boolean>(true)
   const [pendingQuery, setPendingQuery] = useState<string>('')
 
-  // State for custom search domains
+  // State for custom search domains and time range
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false)
   const [searchDomains, setSearchDomains] = useState<string[]>([])
   const [newDomain, setNewDomain] = useState<string>('')
+  const [timeRange, setTimeRange] = useState<string>('all')
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, data } = useChat({
     api: '/api/fireplexity/search',
     body: {
       ...(firecrawlApiKey && { firecrawlApiKey }),
-      ...(searchDomains.length > 0 && { searchDomains })
+      ...(searchDomains.length > 0 && { searchDomains }),
+      ...(timeRange !== 'all' && { timeRange })
     },
     onResponse: () => {
       // Clear status when response starts
@@ -74,11 +83,15 @@ export default function FireplexityPage() {
     }
   })
 
-  // Load search domains from localStorage on mount
+  // Load settings from localStorage on mount
   useEffect(() => {
     const storedDomains = localStorage.getItem('search-domains')
     if (storedDomains) {
       setSearchDomains(JSON.parse(storedDomains))
+    }
+    const storedTimeRange = localStorage.getItem('search-time-range')
+    if (storedTimeRange) {
+      setTimeRange(storedTimeRange)
     }
   }, [])
 
@@ -102,6 +115,12 @@ export default function FireplexityPage() {
     setSearchDomains(updatedDomains)
     localStorage.setItem('search-domains', JSON.stringify(updatedDomains))
     toast.error(`Removed ${domainToRemove}`)
+  }
+
+  const handleTimeRangeChange = (value: string) => {
+    setTimeRange(value)
+    localStorage.setItem('search-time-range', value)
+    toast.info(`Time range set to ${value === 'all' ? 'Any Time' : `Past ${value.replace('d', ' day(s)').replace('w', ' week(s)').replace('m', ' month(s)')}`}`)
   }
 
   // Handle custom data from stream - only process new items
@@ -402,46 +421,59 @@ export default function FireplexityPage() {
       <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Custom Search Domains</DialogTitle>
+            <DialogTitle>Search Settings</DialogTitle>
             <DialogDescription>
-              Limit your search to specific websites. Add domains like "tripadvisor.com" or "lonelyplanet.com".
+              Customize your search experience. Changes are saved automatically.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Input
-                placeholder="e.g., tripadvisor.com"
-                value={newDomain}
-                onChange={(e) => setNewDomain(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleAddDomain()
-                  }
-                }}
-              />
-              <Button onClick={handleAddDomain}>Add</Button>
+          <div className="grid gap-6 py-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Search Time Range</h4>
+              <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select time range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any Time</SelectItem>
+                  <SelectItem value="24h">Past Day</SelectItem>
+                  <SelectItem value="7d">Past Week</SelectItem>
+                  <SelectItem value="30d">Past Month</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Your Domains:</h4>
-              {searchDomains.length > 0 ? (
-                <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                  {searchDomains.map((domain) => (
-                    <li key={domain} className="flex items-center justify-between p-2 bg-zinc-100 dark:bg-zinc-800 rounded-md">
-                      <span className="text-sm font-mono">{domain}</span>
-                      <Button variant="ghost" size="icon" onClick={() => handleRemoveDomain(domain)} className="w-8 h-8">
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-zinc-500 italic">No custom domains added.</p>
-              )}
+            <div>
+              <h4 className="text-sm font-medium mb-2">Restrict to Websites</h4>
+              <p className="text-sm text-zinc-500 mb-3">Add specific websites (e.g., tripadvisor.com) to limit your search to trusted sources.</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="e.g., tripadvisor.com"
+                  value={newDomain}
+                  onChange={(e) => setNewDomain(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddDomain()
+                    }
+                  }}
+                />
+                <Button onClick={handleAddDomain} variant="outline">Add</Button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {searchDomains.map((domain) => (
+                  <div key={domain} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
+                    <span className="text-sm font-mono">{domain}</span>
+                    <Button variant="ghost" size="icon" onClick={() => handleRemoveDomain(domain)}>
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+// ... (rest of the code remains the same)
     </div>
   )
 }

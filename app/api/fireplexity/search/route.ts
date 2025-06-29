@@ -13,6 +13,7 @@ export async function POST(request: Request) {
     const messages = body.messages || []
     const query = messages[messages.length - 1]?.content || body.query
     const searchDomains = body.searchDomains || []
+    const timeRange = body.timeRange || 'all'
     console.log(`[${requestId}] Query received:`, query)
 
     if (!query) {
@@ -66,16 +67,23 @@ export async function POST(request: Request) {
             
           const searchOptions: any = {
             limit: 6,
+            pageOptions: {},
             scrapeOptions: {
               formats: ['markdown'],
               onlyMainContent: true
             }
           };
 
+          if (timeRange !== 'all') {
+            searchOptions.pageOptions.timePublished = timeRange;
+            console.log(`[${requestId}] Restricting search to time range:`, timeRange);
+          }
+
           if (searchDomains.length > 0) {
-            searchOptions.pageOptions = {
-              includePaths: searchDomains.map((domain: string) => `*://${domain}/**`)
-            };
+            if (!searchOptions.pageOptions.includePaths) {
+              searchOptions.pageOptions.includePaths = [];
+            }
+            searchOptions.pageOptions.includePaths.push(...searchDomains.map((domain: string) => `*://${domain}/**`));
             console.log(`[${requestId}] Restricting search to domains:`, searchOptions.pageOptions.includePaths);
           }
 
