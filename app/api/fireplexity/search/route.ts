@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createDeepSeek } from '@ai-sdk/deepseek'
 import { streamText, generateText, createDataStreamResponse } from 'ai'
 import { detectCompanyTicker } from '@/lib/company-ticker-map'
 import { selectRelevantContent } from '@/lib/content-selection'
@@ -23,19 +24,33 @@ export async function POST(request: Request) {
     // Use API key from request body if provided, otherwise fall back to environment variable
     const firecrawlApiKey = body.firecrawlApiKey || process.env.FIRECRAWL_API_KEY
     const openaiApiKey = process.env.OPENAI_API_KEY
+    const deepseekApiKey = process.env.DEEPSEEK_API_KEY
+    const modelProvider = body.modelProvider || 'openai'
     
     if (!firecrawlApiKey) {
       return NextResponse.json({ error: 'Firecrawl API key not configured' }, { status: 500 })
     }
     
-    if (!openaiApiKey) {
-      return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })
-    }
+    let model: any;
+    // Use a different model for follow-up questions, always gpt-4o-mini for now
+    const openaiFollowup = createOpenAI({ apiKey: openaiApiKey })
+    const followUpModel = openaiFollowup('gpt-4o-mini')
 
-    // Configure OpenAI with API key
-    const openai = createOpenAI({
-      apiKey: openaiApiKey
-    })
+    if (modelProvider === 'deepseek') {
+      if (!deepseekApiKey) {
+        return NextResponse.json({ error: 'DeepSeek API key not configured' }, { status: 500 })
+      }
+      console.log(`[${requestId}] Using DeepSeek model`)
+      const deepseek = createDeepSeek({ apiKey: deepseekApiKey })
+      model = deepseek('deepseek-chat')
+    } else {
+      if (!openaiApiKey) {
+        return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })
+      }
+      console.log(`[${requestId}] Using OpenAI model`)
+      const openai = createOpenAI({ apiKey: openaiApiKey })
+      model = openai('gpt-4o-mini')
+    }
 
     // Initialize Firecrawl
     const firecrawl = new FirecrawlApp({ apiKey: firecrawlApiKey })
@@ -190,7 +205,7 @@ export async function POST(request: Request) {
             : `user: ${query}`
             
           const followUpPromise = generateText({
-            model: openai('gpt-4o-mini'),
+            model: followUpModel,
             messages: [
               {
                 role: 'system',
@@ -207,7 +222,7 @@ export async function POST(request: Request) {
           
           // Stream the text generation
           const result = streamText({
-            model: openai('gpt-4o-mini'),
+            model: model,
             messages: aiMessages,
             temperature: 0.7,
             maxTokens: 2000

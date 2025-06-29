@@ -53,13 +53,15 @@ export default function FireplexityPage() {
   const [searchDomains, setSearchDomains] = useState<string[]>([])
   const [newDomain, setNewDomain] = useState<string>('')
   const [timeRange, setTimeRange] = useState<string>('all')
+  const [modelProvider, setModelProvider] = useState<string>('openai')
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, data } = useChat({
     api: '/api/fireplexity/search',
     body: {
       ...(firecrawlApiKey && { firecrawlApiKey }),
       ...(searchDomains.length > 0 && { searchDomains }),
-      ...(timeRange !== 'all' && { timeRange })
+      ...(timeRange !== 'all' && { timeRange }),
+      modelProvider
     },
     onResponse: () => {
       // Clear status when response starts
@@ -92,6 +94,10 @@ export default function FireplexityPage() {
     const storedTimeRange = localStorage.getItem('search-time-range')
     if (storedTimeRange) {
       setTimeRange(storedTimeRange)
+    }
+    const storedModelProvider = localStorage.getItem('model-provider')
+    if (storedModelProvider) {
+      setModelProvider(storedModelProvider)
     }
   }, [])
 
@@ -426,42 +432,55 @@ export default function FireplexityPage() {
               Customize your search experience. Changes are saved automatically.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-6 py-4">
-            <div>
-              <h4 className="text-sm font-medium mb-2">Search Time Range</h4>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="model-provider" className="text-right text-sm font-medium">
+                Model
+              </label>
+              <Select value={modelProvider} onValueChange={(value) => {
+                setModelProvider(value)
+                localStorage.setItem('model-provider', value)
+                toast.info(`Model set to ${value.charAt(0).toUpperCase() + value.slice(1)}`)
+              }}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="deepseek">DeepSeek</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="time-range" className="text-right text-sm font-medium">
+                Time Range
+              </label>
               <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select time range" />
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Any Time" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Any Time</SelectItem>
-                  <SelectItem value="24h">Past Day</SelectItem>
+                  <SelectItem value="1d">Past Day</SelectItem>
                   <SelectItem value="7d">Past Week</SelectItem>
                   <SelectItem value="30d">Past Month</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <h4 className="text-sm font-medium mb-2">Restrict to Websites</h4>
-              <p className="text-sm text-zinc-500 mb-3">Add specific websites (e.g., tripadvisor.com) to limit your search to trusted sources.</p>
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="e.g., tripadvisor.com"
+            <div className="mt-4">
+              <h4 className="text-sm font-medium mb-2">Custom Search Domains</h4>
+              <div className="flex gap-2">
+                <Input 
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleAddDomain()
-                    }
-                  }}
+                  placeholder="e.g., a.domain.com"
                 />
-                <Button onClick={handleAddDomain} variant="outline">Add</Button>
+                <Button onClick={handleAddDomain}>Add</Button>
               </div>
-              <div className="mt-3 space-y-2">
-                {searchDomains.map((domain) => (
+              <div className="mt-2 space-y-2">
+                {searchDomains.map(domain => (
                   <div key={domain} className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
-                    <span className="text-sm font-mono">{domain}</span>
+                    <span className="text-sm">{domain}</span>
                     <Button variant="ghost" size="icon" onClick={() => handleRemoveDomain(domain)}>
                       <Trash2 className="w-4 h-4 text-red-500" />
                     </Button>
