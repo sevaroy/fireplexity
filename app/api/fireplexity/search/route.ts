@@ -171,7 +171,6 @@ export async function POST(request: Request) {
               return;
             }
           }
-          }
           
           // Transform sources metadata
           sources = searchResults.map((item: any) => ({
