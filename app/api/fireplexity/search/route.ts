@@ -98,14 +98,83 @@ export async function POST(request: Request) {
             if (!searchOptions.pageOptions.includePaths) {
               searchOptions.pageOptions.includePaths = [];
             }
-            searchOptions.pageOptions.includePaths.push(...searchDomains.map((domain: string) => `*://${domain}/**`));
+            // 使用多種域名格式來提高匹配率
+            searchDomains.forEach((domain: string) => {
+              searchOptions.pageOptions.includePaths.push(`*://${domain}/**`);
+              searchOptions.pageOptions.includePaths.push(`*://*.${domain}/**`);
+              searchOptions.pageOptions.includePaths.push(`*://www.${domain}/**`);
+            });
             console.log(`[${requestId}] Restricting search to domains:`, searchOptions.pageOptions.includePaths);
           }
 
           const searchData = await firecrawl.search(query, searchOptions);
           
+          // 收集搜索結果
+          let searchResults = searchData.data || [];
+          
+          // 如果指定了域名，對結果進行二次過濾
+          if (searchDomains.length > 0 && searchResults.length > 0) {
+            console.log(`[${requestId}] Applying secondary domain filter for ${searchDomains.join(', ')}`);
+            searchResults = searchResults.filter((item: any) => {
+              if (!item.url) return false;
+              
+              try {
+                // 解析URL獲取主機名
+                const url = new URL(item.url);
+                const hostname = url.hostname;
+                
+                // 檢查是否匹配任何域名
+                return searchDomains.some((domain: string) => 
+                  hostname === domain || 
+                  hostname === `www.${domain}` || 
+                  hostname.endsWith(`.${domain}`)
+                );
+              } catch (e) {
+                console.error(`[${requestId}] Error parsing URL:`, item.url, e);
+                return false;
+              }
+            });
+            
+            console.log(`[${requestId}] Secondary filter: ${searchResults.length} results remaining`);
+            
+            // 如果過濾後沒有結果，但原始搜索有結果，表示域名過濾太嚴格
+            if (searchResults.length === 0 && searchData.data && searchData.data.length > 0) {
+              console.log(`[${requestId}] Warning: All results were filtered out by domain restriction`);
+              
+              // 發送警告消息到前端
+              dataStream.writeData({ 
+                type: 'status', 
+                message: '⚠️ 沒有找到符合指定域名的結果，請考慮放寬域名限制或嘗試不同的查詢。' 
+              });
+              
+              // 為了讓用戶知道沒有找到符合域名的結果，我們仍然返回空的源清單
+              const emptySources: Array<any> = [];
+              dataStream.writeData({ type: 'sources', sources: emptySources });
+              
+              // 將創建一個特殊的提示訊息作為答案
+              const domainLimitMessage = `我在 ${searchDomains.join(', ')} 中搜索了「${query}」，但沒有找到符合這些域名的結果。
+
+您可以：
+- 嘗試不同的域名
+- 放寬域名限制
+- 或使用不同的搜索詞`;
+              
+              // 將這段文本分批寫入以模擬流式回應
+              const chunks = domainLimitMessage.split(' ');
+              for (const chunk of chunks) {
+                dataStream.write(chunk + ' ');
+                // 模擬打字效果
+                await new Promise(resolve => setTimeout(resolve, 30));
+              }
+              
+              // 提前返回，不繼續處理
+              return;
+            }
+          }
+          }
+          
           // Transform sources metadata
-          sources = searchData.data?.map((item: any) => ({
+          sources = searchResults.map((item: any) => ({
             url: item.url,
             title: item.title || item.url,
             description: item.description || item.metadata?.description,
